@@ -1,0 +1,88 @@
+stages:
+
+############################################
+# Terraform PLAN
+############################################
+
+- stage: Terraform_Plan
+  displayName: Terraform Plan
+
+  jobs:
+  - job: plan
+    displayName: Run Terraform Plan
+
+    steps:
+
+    - checkout: self
+
+    - task: TerraformInstaller@1
+      displayName: Install Terraform
+      inputs:
+        terraformVersion: $(TF_VERSION)
+
+    - script: |
+        terraform init
+      displayName: Terraform Init
+
+    - script: |
+        terraform plan -out=tfplan
+      displayName: Terraform Plan
+
+    - publish: tfplan
+      artifact: terraformPlan
+      displayName: Publish Plan Artifact
+
+
+############################################
+# Manual Approval Stage
+############################################
+
+- stage: Approval
+  displayName: Manual Approval
+  dependsOn: Terraform_Plan
+
+  jobs:
+  - job: waitForApproval
+    pool: server
+
+    steps:
+    - task: ManualValidation@0
+      timeoutInMinutes: 1440
+      inputs:
+        notifyUsers: |
+          user@company.com
+        instructions: "Please review the Terraform plan before approving deployment."
+        onTimeout: reject
+
+
+############################################
+# Terraform APPLY
+############################################
+
+- stage: Terraform_Apply
+  displayName: Terraform Apply
+  dependsOn: Approval
+
+  jobs:
+  - job: apply
+    displayName: Apply Terraform
+
+    steps:
+
+    - checkout: self
+
+    - task: TerraformInstaller@1
+      displayName: Install Terraform
+      inputs:
+        terraformVersion: $(TF_VERSION)
+
+    - download: current
+      artifact: terraformPlan
+
+    - script: |
+        terraform init
+      displayName: Terraform Init
+
+    - script: |
+        terraform apply tfplan
+      displayName: Terraform Apply
